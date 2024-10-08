@@ -1,11 +1,16 @@
 
 import json
+import time
 from flask import Flask, jsonify, send_file,request
 from flask_cors import CORS, cross_origin
+from flask_socketio import SocketIO, send, emit
+from socketio_setup import socketio, init_socketio
 
 app = Flask("Avatar RAG Backend")
 app_url="http://localhost:5000/"
 CORS(app, origins=['*'])
+
+init_socketio(app)
 
 
 # GET IDLE AVATAR FOR LOCAL VIDEO 
@@ -53,20 +58,37 @@ def handle_user_query_route():
 
         # Return video
 
-        video_path="result_video.mp4"
-        return jsonify({'status':"success",'video_url':f'{app_url}video/'+video_path,'text_response':"Hello! How can I assist you today? Feel free to ask me anything, whether it's about general knowledge, recommendations, or troubleshooting. I'm here to help!"})
 
+
+        with open("temp/result_video.mp4", 'rb') as f:
+            video_bytes = f.read()
+            # Emit the video chunk to the client
+            socketio.emit('video_chunk', video_bytes )  # Send as hex string
+
+        with open("temp/result_voice.mp4", 'rb') as f:
+            video_bytes = f.read()
+            # Emit the video chunk to the client
+            socketio.emit('video_chunk',video_bytes)  # Send as hex string
+
+        with open("temp/result_voice2.mp4", 'rb') as f:
+            video_bytes = f.read()
+            # Emit the video chunk to the client
+            socketio.emit('video_chunk',video_bytes)  # Send as hex string
+
+        return jsonify({'status':"success",'text_response':"Hello! How can I assist you today? Feel free to ask me anything, whether it's about general knowledge, recommendations, or troubleshooting. I'm here to help!"})
 
     except Exception as e:
         print(e)
 
-@app.route('/video/<filename>', methods=['GET'])
-def serve_video(filename):
+@app.route('/video/<file_path>', methods=['GET'])
+def serve_video(file_path):
     # Serve video file from local storage
-    video_path = f'temp/{filename}'
-    return send_file(video_path, mimetype='video/mp4')
-
-
+    try:
+        video_path=f'temp/{file_path}'
+        return send_file(video_path, mimetype='video/mp4')
+    
+    except Exception as e:
+        print(e)
 
 if __name__ == '__main__':
-    app.run()
+    socketio.run(app, host='0.0.0.0', port=5000)
