@@ -54,7 +54,6 @@ def get_idle_avatar_route():
 @cross_origin(supports_credentials=True)
 def handle_user_query_route():
     try:
-
         if "messages" in request.form:
             messages_str = request.form['messages']
             messages = None
@@ -106,4 +105,4 @@ def serve_video(file_path):
 
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000)
+    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

@@ -9,7 +9,7 @@ class InnerSQLite(InnerSQL):
         self.sql_conn = sql_conn
 
     def init(self) -> any:
-        self.conn = sqlite3.connect(self.sql_conn)
+        self.conn = sqlite3.connect(self.sql_conn, check_same_thread=False)
 
     def query(self, q) -> any:
         cursor = self.conn.cursor()

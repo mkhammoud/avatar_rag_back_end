@@ -12,9 +12,9 @@ from app.core.utils import list_dict_sum
 def init_retrieval_pipe():
     # vllm serve meta-llama/Llama-3.2-1B-Instruct --dtype auto --api-key token-abc123
     pipe = SQLRetrieval(
-        embedding_path='../post_embeddings.index',
-        ids_path='../post_ids.npy',
-        sql=InnerSQLite('../knowledge.db')
+        embedding_path='./post_embeddings.index',
+        ids_path='./post_ids.npy',
+        sql=InnerSQLite('./knowledge.db')
     )
     return pipe
 
