@@ -4,7 +4,10 @@ from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS, cross_origin
 from flask_socketio import SocketIO, send, emit
 
+from app.core.InnerSQLs import InnerSQLite
 from app.core.Pipeline import Pipeline
+from app.core.pipes.SQLRetrieval import SQLRetrieval
+from app.core.pipes.VLLMPipe import VLLMPipe
 from app.main import init_retrieval_pipe, init_llm
 from socketio_setup import socketio, init_socketio
 
@@ -13,6 +16,21 @@ app_url = "http://localhost:5000/"
 CORS(app, origins=['*'])
 
 init_socketio(app)
+
+
+def init_retrieval_pipe():
+    # vllm serve meta-llama/Llama-3.2-1B-Instruct --dtype auto --api-key token-abc123
+    pipe = SQLRetrieval(
+        embedding_path='./post_embeddings.index',
+        ids_path='./post_ids.npy',
+        sql=InnerSQLite('./knowledge.db')
+    )
+    return pipe
+
+
+def init_llm():
+    pipe = VLLMPipe('meta-llama/Llama-3.2-1B-Instruct')
+    return pipe
 
 
 def init_pipline():
@@ -56,12 +74,19 @@ def handle_user_query_route():
     try:
         if "messages" in request.form:
             messages_str = request.form['messages']
-            messages = None
             if messages_str:
                 messages = json.loads(messages_str)  # Convert JSON string back to array
                 message = messages[-1]['content']
-                pipe_out = pipeline.process(message)
-                print(messages)
+
+                def prompt_appender(args):
+                    current_pipe = args['current_pipe']
+                    if current_pipe.__class__.__name__ == VLLMPipe.__name__:
+                        return f"context: {args['last_result']}, answer the following: {message}"
+                    return args['last_result']
+
+                pipe_out = pipeline.process(message, prompt_appender)
+                print(pipe_out)
+                print(pipeline.execution_times())
 
         # Simulate Search Call (you have to embed the user query in your search pipeline and then perform RAG)
 

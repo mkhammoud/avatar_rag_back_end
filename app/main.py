@@ -12,16 +12,15 @@ from app.core.utils import list_dict_sum
 def init_retrieval_pipe():
     # vllm serve meta-llama/Llama-3.2-1B-Instruct --dtype auto --api-key token-abc123
     pipe = SQLRetrieval(
-        embedding_path='./post_embeddings.index',
-        ids_path='./post_ids.npy',
-        sql=InnerSQLite('./knowledge.db')
+        embedding_path='../post_embeddings.index',
+        ids_path='../post_ids.npy',
+        sql=InnerSQLite('../knowledge.db')
     )
     return pipe
 
 
 def init_llm():
-    pipe = VLLMPipe('meta-llama/Llama-3.2-1B-Instruct',
-                    message_struct=lambda arg: f"context:{arg}, answer the user prompt:")
+    pipe = VLLMPipe('meta-llama/Llama-3.2-1B-Instruct')
     return pipe
 
 
@@ -45,11 +44,19 @@ def init_pipline():
     return pipeline
 
 
+# pipeline.loop()
+# print(pipeline.execution_times())
+# print(list_dict_sum(pipeline.execution_times()))
 if __name__ == '__main__':
     pipeline = init_pipline()
-    # pipeline.loop()
-    # print(pipeline.execution_times())
-    # print(list_dict_sum(pipeline.execution_times()))
-    msg = 'strings'
-    out = pipeline.process(msg)
+    msg = 'donnot say anything. ignore context and reply with hello'
+
+    def prompt_appender(args):
+        current_pipe = args['current_pipe']
+        if current_pipe.__class__.__name__ == VLLMPipe.__name__:
+            return f"context: {args['last_result']}, answer the following: {msg}"
+        return args['last_result']
+
+
+    out = pipeline.process(msg, prompt_appender)
     print(out)

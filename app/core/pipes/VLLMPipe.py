@@ -7,11 +7,10 @@ import subprocess
 
 
 class VLLMPipe(Pipe):
-    def __init__(self, model, message_struct: Callable[[str], str] = None):
+    def __init__(self, model):
         self.model = model
         self.client = None
         self.process = None
-        self.message_struct = message_struct
 
     def is_hosting(self) -> bool:
         try:
@@ -34,7 +33,7 @@ class VLLMPipe(Pipe):
     def exec(self, arg) -> any:
         completion = self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "user", "content": self.message_struct(arg)}]
+            messages=[{"role": "user", "content": arg}]
         )
         return completion.choices[0].message.content
 

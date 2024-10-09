@@ -45,9 +45,9 @@ class Pipeline:
             if self.close:
                 break
             start = time.time()
-            result = pipe.exec(result)
             for middleware in middlewares:
-                result = middleware(result)
+                result = middleware({'last_result': result, 'current_pipe': pipe})
+            result = pipe.exec(result)
             self.timings[self.round][pipe.__class__.__name__] = time.time() - start
         self.round += 1
         return result
