@@ -13,6 +13,7 @@ from socketio_setup import socketio, init_socketio
 import threading
 from app.core import middlewares
 from avatar_utils import chunk_string,process_chunks_with_limit
+import ast 
 
 app = Flask("Avatar RAG Backend")
 app_url = "http://localhost:5000/"
@@ -80,6 +81,12 @@ def get_idle_avatar_route():
 @cross_origin(supports_credentials=True)
 def handle_user_query_route():
     try:
+        if "avatarProvider" in request.form:
+            avatarProvider=request.form["avatarProvider"]
+        else:
+            avatarProvider="local"
+
+
         if "messages" in request.form:
             messages_str = request.form['messages']
             if messages_str:
@@ -90,9 +97,17 @@ def handle_user_query_route():
 
                 pipe_out = pipeline.process(message, middlewares.contextualize(messages))
                 
+                try:
+                    x_dict = ast.literal_eval(pipe_out)
+                    pipe_out = x_dict['content']
+                except Exception as e:
+                    print(e)
+                
                 chunks = chunk_string(pipe_out,max_chunk_size=global_config['max_text_character_chunk_size'])
                 
-                threading.Thread(target=process_chunks_with_limit, args=(chunks,global_config['max_text_to_speech_avatar_thread'])).start()
+                if avatarProvider=="local":
+                    print("LOCAL")
+                    threading.Thread(target=process_chunks_with_limit, args=(chunks,global_config['max_text_to_speech_avatar_thread'])).start()
             
                 return jsonify({'status': "success",
                                 'text_response': pipe_out})
