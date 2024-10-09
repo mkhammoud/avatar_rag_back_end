@@ -12,7 +12,7 @@ import scipy, cv2, os, sys, argparse, avatar.audio as audio
 import json, subprocess, random, string
 from tqdm import tqdm
 from glob import glob
-import torch, avatar.face_detection
+import torch, avatar.face_detection as face_detection
 from avatar.models import Wav2Lip
 import platform
 import gc
@@ -109,9 +109,6 @@ face_det_results=None
 
 full_frames=None
 
-
-if os.path.isfile(args.face) and args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
-    args.static = True
 
 def get_smoothened_boxes(boxes, T):
     global model
@@ -236,7 +233,7 @@ def datagen(frames, mels):
         yield img_batch, mel_batch, frame_batch, coords_batch
  
 
-def main():
+def main(index,outfile,avatar_video_path,audio_path):
     global model
     global full_frames
     
@@ -244,33 +241,33 @@ def main():
 
     
     # (NOT RELEVANT FOR US) IF THE FACE AGRUMENT WAS NOT PROVIDED   
-    if not os.path.isfile(args.face):
+    if not os.path.isfile(avatar_video_path):
         raise ValueError('--face argument must be a valid path to video/image file')
 
     # (NOT RELEVANT FOR US AS WE WILL SEND A VIDEO ALWAYS) IF THE FACE AGRUMENT WAS PROVIDED AS AN IMAGE
     else:
         if not full_frames:
-            if args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
-                full_frames = [cv2.imread(args.face)]
+            if avatar_video_path.split('.')[1] in ['jpg', 'png', 'jpeg']:
+                full_frames = [cv2.imread(avatar_video_path)]
 
             # (TO SKIP) EXTRACTING ALL THE FRAMES OF THE VIDEO        
             else:
                 print("Not full frames")
-                full_frames=extract_frames_from_video(args.face)
+                full_frames=extract_frames_from_video(avatar_video_path)
 
     print("Number of frames available for inference: " + str(len(full_frames)))
 
     # (NOT RELEVANT FOR US AS WE WILL ALWAYS SEND WAV AUDIO) EXTRACTING RAW AUDIO FROM AUDIO ARGUMENT IF NOT PROVIDEDI IN WAV FORMAT
-    if not args.audio.endswith('.wav'):
+    if not audio_path.endswith('.wav'):
         print('Extracting raw audio...')
-        command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
+        command = 'ffmpeg -y -i {} -strict -2 {}'.format(audio_path, 'temp/temp.wav')
 
         subprocess.call(command, shell=True)
-        args.audio = 'temp/temp.wav'
+        audio_path = 'temp/temp.wav'
 
     # (CANNOT BE SKIPPED RELATED TO AUDIO) Loading the Audio + Mel spectrogram converts the audio waveform into a Mel spectrogram, highlighting frequencies important to human hearing.
 
-    wav = audio.load_wav(args.audio, 16000)
+    wav = audio.load_wav(audio_path, 16000)
     mel = audio.melspectrogram(wav)
     print(mel.shape)
 
@@ -311,7 +308,7 @@ def main():
         if i == 0:
 
             frame_h, frame_w = full_frames[0].shape[:-1]
-            out = cv2.VideoWriter('temp/result.avi',
+            out = cv2.VideoWriter(f'temp/result{index}.avi',
                                   cv2.VideoWriter_fourcc(*'DIVX'), args.fps, (frame_w, frame_h))
 
         img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
@@ -335,7 +332,7 @@ def main():
 
     out.release()
 
-    command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(args.audio, 'temp/result.avi', args.outfile)
+    command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(audio_path, f'temp/result{index}.avi', outfile)
     subprocess.call(command, shell=platform.system() != 'Windows')
     end_time = time.time()
     duration = end_time - start_time
@@ -378,7 +375,7 @@ def generate_avatar_face_detection(avatar_video):
             save_path = os.path.join('avatar_videos', filename)
             
             avatar_video.save(save_path)
-            args.face=save_path
+            avatar_video_path=save_path
             print(save_path)
 
             full_frames= extract_frames_from_video(save_path)
@@ -489,7 +486,7 @@ def clear_memory():
     gc.collect() 
 
 
-def synthesize(text,avatar_id=None,voice_id=None):
+def synthesize(text,index,avatar_id=None,voice_id=None):
 
     try:
         global face_det_results
@@ -500,24 +497,25 @@ def synthesize(text,avatar_id=None,voice_id=None):
         
         if avatar_id:
             avatar_video_path=get_avatar_video(avatar_id)
-            args.face=avatar_video_path
             full_frames= get_avatar_videos_frames(avatar_id)
             face_det_results=get_avatar_face_detection_results(avatar_id)
 
         speech_blob=generate_speech(text,voice_id)
-        audio_path=f"avatar/input/audio.wav"
+        audio_path=f"avatar/input/audio_{index}.wav"
         
         with open(audio_path, "wb") as f:
             f.write(speech_blob.read())
-        args.audio = audio_path
 
-        main()
 
-        with open(args.outfile,"rb") as f:
-            video_bytes = f.read()
-            socketio.emit('video_chunk', video_bytes)
+        outfile=f"avatar/results/result_voice{index}.mp4"
+
+        main(index,outfile,avatar_video_path,audio_path)
         
-        return text
+        with open(outfile,"rb") as f:
+            video_bytes = f.read()
+            #socketio.emit('video_chunk', video_bytes)
+            return video_bytes
+        
     
     except Exception as e:
         print(e)
