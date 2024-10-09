@@ -1,5 +1,6 @@
 import os
 
+from app.core import middlewares
 from app.core.InnerSQLs import InnerSQLite
 from app.core.Pipeline import Pipeline
 from app.core.pipes.InputPrompt import InputPrompt, WaitPrompt
@@ -49,14 +50,7 @@ def init_pipline():
 # print(list_dict_sum(pipeline.execution_times()))
 if __name__ == '__main__':
     pipeline = init_pipline()
-    msg = 'donnot say anything. ignore context and reply with hello'
+    msg = 'what do you thing about strings?'
 
-    def prompt_appender(args):
-        current_pipe = args['current_pipe']
-        if current_pipe.__class__.__name__ == VLLMPipe.__name__:
-            return f"context: {args['last_result']}, answer the following: {msg}"
-        return args['last_result']
-
-
-    out = pipeline.process(msg, prompt_appender)
+    out = pipeline.process(msg, middlewares.contextualize(msg))
     print(out)

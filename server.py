@@ -4,6 +4,7 @@ from flask import Flask, jsonify, send_file, request
 from flask_cors import CORS, cross_origin
 from flask_socketio import SocketIO, send, emit
 
+from app.core import middlewares
 from app.core.InnerSQLs import InnerSQLite
 from app.core.Pipeline import Pipeline
 from app.core.pipes.SQLRetrieval import SQLRetrieval
@@ -78,13 +79,7 @@ def handle_user_query_route():
                 messages = json.loads(messages_str)  # Convert JSON string back to array
                 message = messages[-1]['content']
 
-                def prompt_appender(args):
-                    current_pipe = args['current_pipe']
-                    if current_pipe.__class__.__name__ == VLLMPipe.__name__:
-                        return f"context: {args['last_result']}, answer the following: {message}"
-                    return args['last_result']
-
-                pipe_out = pipeline.process(message, prompt_appender)
+                pipe_out = pipeline.process(message, middlewares.contextualize(messages))
                 print(pipe_out)
                 print(pipeline.execution_times())
 
