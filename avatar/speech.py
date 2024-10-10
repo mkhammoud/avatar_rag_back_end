@@ -1,18 +1,15 @@
 from io import BytesIO
 import pickle
-import re
 import time
-from flask import Flask, request, jsonify, send_file
-import json
 # start a web server
-
-from os import listdir, path
 import numpy as np
-import scipy, cv2, os, sys, argparse, avatar.audio as audio
-import json, subprocess, random, string
+import  cv2, os, avatar.audio as audio
+import subprocess
 from tqdm import tqdm
-from glob import glob
-import torch, avatar.face_detection as face_detection
+import torch
+print("Importing modules...")
+from avatar.face_detection.api import FaceAlignment, LandmarksType, NetworkSize
+print("Modules imported successfully.")
 from avatar.models import Wav2Lip
 import platform
 import gc
@@ -21,16 +18,17 @@ from transformers import pipeline
 from datasets import load_dataset
 import soundfile as sf
 from werkzeug.utils import secure_filename
-from socketio_setup import socketio
 
 #app = Flask(__name__)
 
 load_dotenv()
 
+
+
 class Args:
     def __init__(self):
         self.checkpoint_path = "avatar/checkpoints/wav2lip_gan.pth"
-        self.face = "avatar_videos/lisa_casual_1080.mp4"
+        self.face = "avatar_videos/lisa_casual_1080_finetuned_pl.mp4"
         self.audio = "avatar/input/default_audio.wav"
         self.outfile = 'avatar/results/result_voice.mp4'
         self.static = False
@@ -44,7 +42,7 @@ class Args:
         self.rotate = False
         self.nosmooth = False
         self.img_size = 96
-        self.default_avatar_id="lisa_casual_1080"
+        self.default_avatar_id="lisa_casual_1080_finetuned_pl"
 
 args = Args()
 
@@ -64,6 +62,12 @@ def _load(checkpoint_path):
 
 
 def load_model(path):
+    print("LOADING WAV2LIP MODEL")
+    print("LOADING WAV2LIP MODEL")
+    print("LOADING WAV2LIP MODEL")
+    print("LOADING WAV2LIP MODEL")
+    print("LOADING WAV2LIP MODEL")
+
     global model
     model = Wav2Lip()
     print("Load checkpoint from: {}".format(path))
@@ -78,20 +82,57 @@ def load_model(path):
     return model.eval()
 
 def load_model_and_dataset(voice_id=None):
+
     global text_to_speech_model
     global text_to_speech_embeddings_dataset
 
     if not text_to_speech_model:
+        print("LOADING TEXT TO SPEECH MODEL PIPELINE ")
+        print("LOADING TEXT TO SPEECH MODEL PIPELINE ")
+        print("LOADING texxt to SPEECH MODEL PIPELINE ")
+        print("LOADING text to speech MODEL PIPELINE ")
+        print("LOADING text to speech MODEL PIPELINE ")
         text_to_speech_model = pipeline("text-to-speech", "microsoft/speecht5_tts",device=device)
     
     if not text_to_speech_embeddings_dataset:
-        embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
+        print("LOADING TEXT TO SPEECH MODEL DATASET ")
+        print("LOADING TEXT TO SPEECH MODEL DATASET ")
+        print("LOADING texxt to SPEECH MODEL DATASET")
+        print("LOADING text to speech MODEL DATASET")
+        print("LOADING text to speech MODEL DATASET")
+        text_to_speech_embeddings_dataset = load_dataset("Matthijs/cmu-arctic-xvectors", split="validation")
     
-    if voice_id:
-        return torch.tensor(embeddings_dataset[int(voice_id)]["xvector"]).unsqueeze(0)
+    if voice_id :
+        return torch.tensor(text_to_speech_embeddings_dataset[int(voice_id)]["xvector"]).unsqueeze(0)
     else:
-        return torch.tensor(embeddings_dataset[7306]["xvector"]).unsqueeze(0)
+        return torch.tensor(text_to_speech_embeddings_dataset[7306]["xvector"]).unsqueeze(0)
     # Return speaker embedding for later use (can be modified to load other embeddings if needed)
+
+
+def get_avatar_videos_frames(avatar_id):
+    avatar_video_frames_path=f"avatar/avatar_videos_frames/{avatar_id}.pkl"
+    with open(avatar_video_frames_path, 'rb') as f:
+        full_frames=pickle.load(f)
+        return full_frames
+
+def get_avatar_face_detection_results(avatar_id):
+    try:
+        avatar_face_det_path=f"avatar/face_detection_results/{avatar_id}.pkl"
+        print(avatar_face_det_path)
+        with open(avatar_face_det_path, 'rb') as f:
+            face_det_results=pickle.load(f)
+            return face_det_results
+
+    except Exception as e:
+        print(e)
+
+def get_avatar_video(avatar_id):
+    try:
+        avatar_video_path=f"avatar/avatar_videos/{avatar_id}.mp4"
+        return avatar_video_path
+
+    except Exception as e:
+        print(e)
 
 
 model_path ="avatar/checkpoints/wav2lip_gan.pth"
@@ -107,8 +148,11 @@ load_model_and_dataset()
 
 face_det_results=None
 
-full_frames=None
+avatarId=args.default_avatar_id;
 
+full_frames=get_avatar_videos_frames(avatarId)
+avatar_video_path=get_avatar_video(avatarId)
+face_det_results=get_avatar_face_detection_results(avatarId)
 
 def get_smoothened_boxes(boxes, T):
     global model
@@ -124,8 +168,8 @@ def get_smoothened_boxes(boxes, T):
 def face_detect(images):
     global model
 
-
-    detector = face_detection.FaceAlignment(face_detection.LandmarksType._2D,
+ 
+    detector = FaceAlignment(LandmarksType._2D,
                                             flip_input=False, device=device)
 
     batch_size = args.face_det_batch_size
@@ -155,7 +199,7 @@ def face_detect(images):
     y2 = 100
     for rect, image in zip(predictions, images):
         if rect is None:
-            cv2.imwrite('temp/faulty_frame.jpg', image)  # check this frame where the face was not detected.
+            cv2.imwrite('avatar/temp/faulty_frame.jpg', image)  # check this frame where the face was not detected.
             print(f'Face not detected in {fnr}! Ensure the video contains a face in all the frames.')
         # raise ValueError('Face not detected! Ensure the video contains a face in all the frames.')
         else:
@@ -176,9 +220,8 @@ def face_detect(images):
     return results
 
 
-def datagen(frames, mels):
+def datagen(face_det_results,frames, mels):
     global model
-    global face_det_results
 
     img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
@@ -233,11 +276,10 @@ def datagen(frames, mels):
         yield img_batch, mel_batch, frame_batch, coords_batch
  
 
-def main(index,outfile,avatar_video_path,audio_path):
+def main(full_frames,face_det_results,index,outfile,avatar_video_path,audio_path):
     global model
-    global full_frames
-    
-    start_time = time.time()
+
+    audio_inspection_time=time.time()
 
     
     # (NOT RELEVANT FOR US) IF THE FACE AGRUMENT WAS NOT PROVIDED   
@@ -253,17 +295,20 @@ def main(index,outfile,avatar_video_path,audio_path):
             # (TO SKIP) EXTRACTING ALL THE FRAMES OF THE VIDEO        
             else:
                 print("Not full frames")
+                frame_extraction_time=time.time();
                 full_frames=extract_frames_from_video(avatar_video_path)
-
+                end_time=time.time();
+                duration=end_time-frame_extraction_time;      
+                print("TIME TAKEN FOR REAL TIME FRAM EXTRACTION",duration)
     print("Number of frames available for inference: " + str(len(full_frames)))
 
     # (NOT RELEVANT FOR US AS WE WILL ALWAYS SEND WAV AUDIO) EXTRACTING RAW AUDIO FROM AUDIO ARGUMENT IF NOT PROVIDEDI IN WAV FORMAT
     if not audio_path.endswith('.wav'):
         print('Extracting raw audio...')
-        command = 'ffmpeg -y -i {} -strict -2 {}'.format(audio_path, 'temp/temp.wav')
+        command = 'ffmpeg -y -i {} -strict -2 {}'.format(audio_path, 'avatar/temp/temp.wav')
 
         subprocess.call(command, shell=True)
-        audio_path = 'temp/temp.wav'
+        audio_path = 'avatar/temp/temp.wav'
 
     # (CANNOT BE SKIPPED RELATED TO AUDIO) Loading the Audio + Mel spectrogram converts the audio waveform into a Mel spectrogram, highlighting frequencies important to human hearing.
 
@@ -291,13 +336,23 @@ def main(index,outfile,avatar_video_path,audio_path):
     full_frames = full_frames[:len(mel_chunks)]
 
     batch_size = args.wav2lip_batch_size
- 
+    
+    end_time=time.time();
+    duration=end_time-audio_inspection_time;      
+    print("TIME TAKEN TO INSPECT AUDIO MAINLY : ",duration)
+
+
+
+    animation_prepare_time=time.time();
     # (CANNOT BE SKIPPED) GENERATION FUNCTION BECAUSE IT CONTAINS THE AUDIO CHUNKCS
-    gen = datagen(full_frames.copy(), mel_chunks)
+    gen = datagen(face_det_results,full_frames.copy(), mel_chunks)
 
-    clear_memory()
+    end_time=time.time();
+    duration=end_time-animation_prepare_time;      
+    print("TIME TAKEN TO PREPARE THE FRAMES FOR ANIMATION: ",duration)
 
-  
+    animation_gen_time=time.time();
+
     # processes batches of frames and audio to generate a video,
     for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen,
                                                                     total=int(
@@ -308,7 +363,7 @@ def main(index,outfile,avatar_video_path,audio_path):
         if i == 0:
 
             frame_h, frame_w = full_frames[0].shape[:-1]
-            out = cv2.VideoWriter(f'temp/result{index}.avi',
+            out = cv2.VideoWriter(f'avatar/temp/result{index}.avi',
                                   cv2.VideoWriter_fourcc(*'DIVX'), args.fps, (frame_w, frame_h))
 
         img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
@@ -332,37 +387,85 @@ def main(index,outfile,avatar_video_path,audio_path):
 
     out.release()
 
-    command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(audio_path, f'temp/result{index}.avi', outfile)
+    end_time=time.time();
+    duration=end_time-animation_gen_time;      
+    print("TIME TAKEN TO GENERATE THE NAIMATION ",duration)
+
+    video_sound_encoding=time.time();
+
+    command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(audio_path, f'avatar/temp/result{index}.avi', outfile)
     subprocess.call(command, shell=platform.system() != 'Windows')
-    end_time = time.time()
-    duration = end_time - start_time
-    print(f"Duration: {duration} seconds")
+
+    end_time=time.time();
+    duration=end_time-video_sound_encoding;      
+    print("TIME TAKEN TO ENCODE THE VIDEO WITH AUDIO",duration)
 
 
-def get_avatar_face_detection_results(avatar_id):
+
+def create_perfect_loop(input_path,output_path):
+
+    # Open the video using OpenCV
+    cap = cv2.VideoCapture(input_path)
+
+    # Get video properties
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX')  # Codec for the output video
+
+    temp_output_path = 'avatar/temp/temp_output_process_avatar.avi'
+
+    # Output video writer
+    out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
+
+    # Read all frames from the video
+    frames = []
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frames.append(frame)
+
+    cap.release()  # Close the input video
+
+    # Write original frames
+    for frame in frames:
+        out.write(frame)
+
+    # Write reversed frames, excluding the first frame to create a seamless loop
+    for frame in reversed(frames[:-1]):
+        out.write(frame)
+
+    # Release the output video
+    out.release()
+    
+    
+
+    # Use ffmpeg to re-encode the video without audio
+    command = [
+        'ffmpeg',
+        '-y',
+        '-i', temp_output_path,
+        '-an',  # Disable audio
+        '-c:v', 'libx264',  # Video codec
+        '-preset', 'veryslow',  # Set encoding speed
+        '-crf', '18', 
+        '-pix_fmt', 'yuv420p', # Set quality (lower means better quality)
+        output_path  # Final output path
+    ]
+
+    subprocess.run(command, check=True)
+
+    # Optionally, remove the temporary output file if needed
+    import os
+    if os.path.exists(temp_output_path):
+        os.remove(temp_output_path)
+
+
+def process_avatar(avatar_video,create_perfect_loop_param):
+
     try:
-        avatar_face_det_path=f"avatar/face_detection_results/{avatar_id}.pkl"
-        print(avatar_face_det_path)
-        with open(avatar_face_det_path, 'rb') as f:
-            face_det_results=pickle.load(f)
-            return face_det_results
-
-    except Exception as e:
-        print(e)
-
-def get_avatar_video(avatar_id):
-    try:
-        avatar_video_path=f"avatar/avatar_videos/{avatar_id}.mp4"
-        return avatar_video_path
-
-    except Exception as e:
-        print(e)
-
-def generate_avatar_face_detection(avatar_video):
-    global full_frames
-    global face_det_results
-
-    try:
+                
             avatar_video.seek(0)
 
             # Secure the filename
@@ -372,17 +475,24 @@ def generate_avatar_face_detection(avatar_video):
             name_without_ext = os.path.splitext(filename)[0]
 
             # Specify the path where you want to save the file
-            save_path = os.path.join('avatar_videos', filename)
-            
+            save_path = os.path.join('avatar/avatar_videos', filename)
             avatar_video.save(save_path)
-            avatar_video_path=save_path
-            print(save_path)
-
+            
+            if create_perfect_loop_param =="true":
+                old_path = os.path.join('avatar/avatar_videos', filename)
+                name_without_ext +="_pl"
+                save_path=os.path.join('avatar/avatar_videos', name_without_ext+".mp4")
+                create_perfect_loop(old_path,save_path)
+                # Delete the file if it exists
+                if os.path.exists(old_path):
+                    print("REMOVED")
+                    os.remove(old_path) 
+    
             full_frames= extract_frames_from_video(save_path)
             
             frames=full_frames.copy()
 
-            avatar_videos_frames_path = f"avatar_videos_frames/{name_without_ext}.pkl"
+            avatar_videos_frames_path = f"avatar/avatar_videos_frames/{name_without_ext}.pkl"
             
             # Write the face detection results to the pickle file
             with open(avatar_videos_frames_path, 'wb') as f:
@@ -398,16 +508,18 @@ def generate_avatar_face_detection(avatar_video):
                 y1, y2, x1, x2 = args.box
                 face_det_results = [[f[y1: y2, x1:x2], (y1, y2, x1, x2)] for f in frames]
             
-            avatar_face_det_path = f"face_detection_results/{name_without_ext}.pkl"
+            avatar_face_det_path = f"avatar/face_detection_results/{name_without_ext}.pkl"
             
             # Write the face detection results to the pickle file
             with open(avatar_face_det_path, 'wb') as f:
                 pickle.dump(face_det_results, f)
 
+            return {'status': 'success','message': 'Avatar Created Successfulyy'}
+
 
     except Exception as e:
         print(e)
-        return jsonify({"status":"failure"})
+        return {'status':'failure'}
 
 
 
@@ -427,11 +539,7 @@ def generate_speech(text, voice_id=None):
     buffer.seek(0)
     return buffer
 
-def get_avatar_videos_frames(avatar_id):
-    avatar_video_frames_path=f"avatar/avatar_videos_frames/{avatar_id}.pkl"
-    with open(avatar_video_frames_path, 'rb') as f:
-        full_frames=pickle.load(f)
-        return full_frames
+
 
 
 '''
@@ -443,7 +551,7 @@ def save_avatar():
             avatar_video=request.files["avatar_video"]
 
         if avatar_video: 
-            result= generate_avatar_face_detection(avatar_video)
+            result= process_avatar(avatar_video)
             return jsonify({"status":"success","message":"Avatar Created Successfully"})
 
     except Exception as e:
@@ -486,39 +594,100 @@ def clear_memory():
     gc.collect() 
 
 
-def synthesize(text,index,avatar_id=None,voice_id=None):
+def synthesize_from_text(text,index,avatar_id=None,voice_id=None):
+    global full_frames
+    global avatarId
+    global face_det_results
+    global avatar_video_path
 
     try:
-        global face_det_results
-        global full_frames
+        start_time=time.time();
+
 
         if not avatar_id:
             avatar_id=args.default_avatar_id
         
+        disk_loading_time=time.time();
+        
         if avatar_id:
-            avatar_video_path=get_avatar_video(avatar_id)
-            full_frames= get_avatar_videos_frames(avatar_id)
-            face_det_results=get_avatar_face_detection_results(avatar_id)
+            if avatar_id !=avatarId:
+               avatarId=avatar_id
+               full_frames= get_avatar_videos_frames(avatarId)
+               avatar_video_path=get_avatar_video(avatarId)
+               face_det_results=get_avatar_face_detection_results(avatarId)
+        
+        end_time=time.time();
+        duration=end_time-disk_loading_time;      
+        print("TIME TAKEN TO LOAD FRAMES AND FULL FACE DETECTION RESULT : ",duration)
+        
 
+        text_to_speech_time=time.time();
         speech_blob=generate_speech(text,voice_id)
         audio_path=f"avatar/input/audio_{index}.wav"
         
         with open(audio_path, "wb") as f:
             f.write(speech_blob.read())
 
-
         outfile=f"avatar/results/result_voice{index}.mp4"
 
-        main(index,outfile,avatar_video_path,audio_path)
+        end_time=time.time();
+        duration=end_time-text_to_speech_time;      
+        print("TIME TAKEN FOR TEXT_TO_SPEECH : ",duration)
+
+        main(full_frames,face_det_results,index,outfile,avatar_video_path,audio_path)
         
         with open(outfile,"rb") as f:
             video_bytes = f.read()
             #socketio.emit('video_chunk', video_bytes)
+            end_time=time.time();
+            duration=end_time-start_time;
+            print("TOTAL TIME TAKEN BY AVATAR GENERATION: ",duration)
             return video_bytes
         
+
     
     except Exception as e:
         print(e)
+
+def synthesize_from_audio(audio,avatar_id=None):
+
+    try:
+        start_time=time.time();
+
+        index=0
+
+        if not avatar_id:
+            avatar_id=args.default_avatar_id
+
+
+        if avatar_id:
+            avatar_video_path=get_avatar_video(avatar_id)
+            full_frames= get_avatar_videos_frames(avatar_id)
+            face_det_results=get_avatar_face_detection_results(avatar_id)
+
+        audio_path=f"avatar/input/audio_{index}.wav"
+
+        with open(audio_path, "wb") as f:
+            f.write(audio.read())
+
+
+        outfile=f"avatar/results/result_voice{index}.mp4"
+
+        main(full_frames,face_det_results,index,outfile,avatar_video_path,audio_path)
+        
+        with open(outfile,"rb") as f:
+            video_bytes = f.read()
+            #socketio.emit('video_chunk', video_bytes)
+            end_time=time.time();
+            duration=end_time-start_time;
+            print("Time taken for Avatar text to speech generation in seconds: ",duration)
+            return video_bytes
+        
+
+    
+    except Exception as e:
+        print(e)
+
 '''
 if __name__ == '__main__':
     main_load_model()

@@ -1,6 +1,6 @@
 import concurrent.futures
 import queue
-from avatar.speech import synthesize
+from avatar.speech import synthesize_from_text
 from socketio_setup import socketio
 import re
 
@@ -51,7 +51,7 @@ def chunk_string(text, max_chunk_size=300):
     
     return chunks
 
-def process_chunks_with_limit(chunks, max_threads=2):
+def process_chunks_with_limit(chunks, max_threads=2,avatarId=None,voiceId=None):
     total_chunks = len(chunks)
     results = [None] * total_chunks  # Pre-allocate for storing results
     chunk_index = 0  # Keep track of the current chunk index
@@ -62,7 +62,7 @@ def process_chunks_with_limit(chunks, max_threads=2):
             # Submit tasks for this batch
             futures = {}
             for i in range(min(max_threads, total_chunks - chunk_index)):
-                futures[executor.submit(synthesize, chunks[chunk_index], chunk_index)] = chunk_index
+                futures[executor.submit(synthesize_from_text, chunks[chunk_index], chunk_index,avatarId,voiceId)] = chunk_index
                 chunk_index += 1
 
             # Collect results and store in the correct order

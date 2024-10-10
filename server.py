@@ -1,3 +1,4 @@
+from io import BytesIO
 import json
 import time
 from flask import Flask, jsonify, send_file, request
@@ -14,6 +15,7 @@ import threading
 from app.core import middlewares
 from avatar_utils import chunk_string,process_chunks_with_limit
 import ast 
+from avatar.speech import synthesize_from_audio, process_avatar
 
 app = Flask("Avatar RAG Backend")
 app_url = "http://localhost:5000/"
@@ -23,7 +25,7 @@ init_socketio(app)
 
 global_config={
 "max_text_character_chunk_size":200,
-"max_text_to_speech_avatar_thread":2
+"max_text_to_speech_avatar_thread":1,
 }
 
 def init_retrieval_pipe():
@@ -64,13 +66,10 @@ def get_idle_avatar_route():
             avatarProvider = request.form["avatarProvider"]
 
             # Simulate Text to speech avatar pipeline or so 
-
-            video_path = "default_avatar.mp4"
-
-            return jsonify({
-                'status': "success",
-                'video_url': f'{app_url}video/' + video_path,
-            })
+            print(avatarId)
+            video_path = f"idle_avatars/{avatarId}.mp4"
+            print(video_path)
+            return send_file(video_path,mimetype='video/mp4')
 
 
     except Exception as e:
@@ -85,7 +84,6 @@ def handle_user_query_route():
             avatarProvider=request.form["avatarProvider"]
         else:
             avatarProvider="local"
-
 
         if "messages" in request.form:
             messages_str = request.form['messages']
@@ -106,8 +104,11 @@ def handle_user_query_route():
                 chunks = chunk_string(pipe_out,max_chunk_size=global_config['max_text_character_chunk_size'])
                 
                 if avatarProvider=="local":
-                    print("LOCAL")
-                    threading.Thread(target=process_chunks_with_limit, args=(chunks,global_config['max_text_to_speech_avatar_thread'])).start()
+
+                    voiceId=request.form["voiceId"]
+                    avatarId=request.form["avatarId"]
+                    
+                    threading.Thread(target=process_chunks_with_limit, args=(chunks,global_config['max_text_to_speech_avatar_thread'],avatarId,voiceId,)).start()
             
                 return jsonify({'status': "success",
                                 'text_response': pipe_out})
@@ -116,12 +117,45 @@ def handle_user_query_route():
         print(e)
 
 
-@app.route('/video/<file_path>', methods=['GET'])
-def serve_video(file_path):
-    # Serve video file from local storage
+@app.route('/synthesize_single_from_audio', methods=["POST", "OPTIONS"])
+@cross_origin(supports_credentials=True)
+def synthesize_from_audio_route():
     try:
-        video_path = f'temp/{file_path}'
-        return send_file(video_path, mimetype='video/mp4')
+
+       avatarId=None 
+       if "avatarId" in request.form:
+          avatarId=request.form["avatarId"]   
+     
+       if "audio" in request.files:
+           audio=request.files["audio"]
+
+           result=synthesize_from_audio(audio,avatarId)
+           video_object = BytesIO(result)
+           return send_file(video_object,mimetype='video/mp4') 
+
+    except Exception as e:
+        print(e)
+
+
+@app.route('/process_avatar', methods=["POST", "OPTIONS"])
+@cross_origin(supports_credentials=True)
+def process_avatar_route():
+    try:
+
+       if "avatarVideo" in request.files:
+           avatarVideo=request.files["avatarVideo"]
+           create_perfect_loop=request.form["create_perfect_loop"]
+
+           result=process_avatar(avatarVideo,create_perfect_loop)
+           print(result)
+           return jsonify(result)
+
+    except Exception as e:
+        print(e)
+
+
+
+
 
     except Exception as e:
         print(e)
