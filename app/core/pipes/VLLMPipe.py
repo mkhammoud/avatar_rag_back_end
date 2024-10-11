@@ -11,6 +11,12 @@ class VLLMPipe(Pipe):
         self.model = model
         self.client = None
         self.process = None
+        self.client = OpenAI(
+            base_url="http://localhost:8000/v1",
+            api_key="token-abc123",
+        )
+        if not self.is_hosting():
+            raise Exception('VLLM is not working. Please try again after starting the VLLM server.')
 
     def is_hosting(self) -> bool:
         try:
@@ -21,14 +27,6 @@ class VLLMPipe(Pipe):
             return True
         except Exception as ex:
             return False
-
-    def init(self):
-        self.client = OpenAI(
-            base_url="http://localhost:8000/v1",
-            api_key="token-abc123",
-        )
-        if not self.is_hosting():
-            raise Exception('VLLM is not working. Please try again after starting the VLLM server.')
 
     def exec(self, arg) -> any:
         completion = self.client.chat.completions.create(

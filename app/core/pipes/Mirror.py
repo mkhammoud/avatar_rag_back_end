@@ -2,11 +2,11 @@ from app.core.Pipeline import Pipe
 
 
 class Mirror(Pipe):
-    def init(self):
-        pass
+    def __init__(self, prefix=None):
+        self.prefix = prefix if prefix else ''
 
     def exec(self, arg):
-        print(arg)
+        print(self.prefix, arg)
         return arg
 
     def end(self):

@@ -4,12 +4,10 @@ from abc import abstractmethod, ABC
 from collections import defaultdict
 from typing import List
 
+from app.core.thread_array import ThreadSafeArray
+
 
 class Pipe(ABC):
-    @abstractmethod
-    def init(self):
-        pass
-
     @abstractmethod
     def exec(self, arg) -> any:
         pass
@@ -24,12 +22,9 @@ class Pipeline:
         self.pipes: List[Pipe] = []
         if pipes is not None:
             [self.queue(p) for p in pipes]
-        self.timings = []
+        self.timings = ThreadSafeArray()
         self.round = 0
         self.close = False
-
-    def init(self):
-        [p.init() for p in self.pipes]
 
     def queue(self, pipe: Pipe):
         self.pipes.append(pipe)
@@ -48,12 +43,11 @@ class Pipeline:
             for middleware in middlewares:
                 result = middleware({'last_result': result, 'current_pipe': pipe})
             result = pipe.exec(result)
-            self.timings[self.round][pipe.__class__.__name__] = time.time() - start
+            self.timings.get(self.round)[pipe.__class__.__name__] = time.time() - start
         self.round += 1
         return result
 
     def loop(self):
-        self.init()
 
         def middle_close(args):
             if args == 'stop':
@@ -66,4 +60,4 @@ class Pipeline:
             self.process(None, middle_close)
 
     def execution_times(self):
-        return self.timings
+        return self.timings.array

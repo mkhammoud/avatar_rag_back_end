@@ -1,51 +1,37 @@
 from abc import abstractmethod, ABC
-from typing import Callable
-
 from app.core.Pipeline import Pipe
-import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
-import sqlite3
 
 
 @abstractmethod
 class InnerSQL(ABC):
     @abstractmethod
-    def init(self) -> any:
-        pass
-
-    @abstractmethod
     def query(self, q) -> any:
         pass
 
+    @abstractmethod
+    def get_conn(self) -> any:
+        pass
 
+
+# noinspection PyUnresolvedReferences
 class SQLRetrieval(Pipe):
-    def __init__(self, embedding_path, ids_path, sql: InnerSQL):
+    def __init__(self, context: 'AppContext', top_k):
         super().__init__()
-        self.embedding_path = embedding_path
-        self.ids_path = ids_path
-        self.sql = sql
-        self.index = None
-        self.ids = None
-        self.model = None
-
-    def init(self):
-        self.sql.init()
-        self.index = faiss.read_index(self.embedding_path)
-        self.ids = np.load(self.ids_path)
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.context = context
+        self.top_k = top_k
 
     def exec(self, arg) -> any:
-        query_embedding = self.model.encode(arg)
-        # D: distances, I: indices of top results
-        distance, indices = self.index.search(np.array([query_embedding]), 1)
-        result_ids = [self.ids[idx] for idx in indices[0]]
-        for post_id in result_ids:
-            q = f'select ID, Text from knowledge where ID = {post_id}'
-            results = self.sql.query(q)
-            if results:
-                return results[0][1]
-        return None
+        query_embedding = self.context.encoder.encode(arg, convert_to_numpy=True).astype(np.float32)
+        query_embedding = query_embedding.astype('float32').reshape(1, -1)
+        distances, indices = self.context.indexes.search(query_embedding, self.top_k)
+        result_ids = [str(self.context.search_ids[idx]) for idx in indices[0]]
+
+        q = f'select * from flights_fts where id in ({",".join(result_ids)})'
+        self.context.logger.error('Query: {}'.format(q))
+        results = self.context.sql.query(q)
+        self.context.logger.error(f'{results}')
+        return results
 
     def end(self):
         pass
