@@ -69,6 +69,7 @@ def handle_user_query_route():
 
                 print("LAST MESSAGE", message)
 
+  
                 pipe_out = app_context.get_pipeline().process(message, middlewares.contextualize(messages))
 
                 try:
@@ -77,6 +78,9 @@ def handle_user_query_route():
                 except Exception as e:
                     print(e)
 
+                '''
+                pipe_out="Python is a versatile, high-level programming language known for its simplicity and readability. It supports multiple programming paradigms, making it ideal for beginners and professionals alike."
+                '''
                 chunks = chunk_string(pipe_out, max_chunk_size=global_config['max_text_character_chunk_size'])
 
                 if avatarProvider == "local":
